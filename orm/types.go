@@ -63,7 +63,7 @@ type Inserter interface {
 type QuerySeter interface {
 	Filter(string, ...interface{}) QuerySeter
 	Exclude(string, ...interface{}) QuerySeter
-	SetCond(*Condition) QuerySeter
+	SetCond(Condition) QuerySeter
 	Limit(interface{}, ...interface{}) QuerySeter
 	Offset(interface{}) QuerySeter
 	OrderBy(...string) QuerySeter
@@ -155,17 +155,17 @@ type dbBaser interface {
 	InsertStmt(stmtQuerier, *modelInfo, reflect.Value, *time.Location) (int64, error)
 	Update(dbQuerier, *modelInfo, reflect.Value, *time.Location, []string) (int64, error)
 	Delete(dbQuerier, *modelInfo, reflect.Value, *time.Location) (int64, error)
-	ReadBatch(dbQuerier, *querySet, *modelInfo, *Condition, interface{}, *time.Location, []string) (int64, error)
+	ReadBatch(dbQuerier, *querySet, *modelInfo, Condition, interface{}, *time.Location, []string) (int64, error)
 	SupportUpdateJoin() bool
-	UpdateBatch(dbQuerier, *querySet, *modelInfo, *Condition, Params, *time.Location) (int64, error)
-	DeleteBatch(dbQuerier, *querySet, *modelInfo, *Condition, *time.Location) (int64, error)
-	Count(dbQuerier, *querySet, *modelInfo, *Condition, *time.Location) (int64, error)
+	UpdateBatch(dbQuerier, *querySet, *modelInfo, Condition, Params, *time.Location) (int64, error)
+	DeleteBatch(dbQuerier, *querySet, *modelInfo, Condition, *time.Location) (int64, error)
+	Count(dbQuerier, *querySet, *modelInfo, Condition, *time.Location) (int64, error)
 	OperatorSql(string) string
 	GenerateOperatorSql(*modelInfo, *fieldInfo, string, []interface{}, *time.Location) (string, []interface{})
 	GenerateOperatorLeftCol(*fieldInfo, string, *string)
 	PrepareInsert(dbQuerier, *modelInfo) (stmtQuerier, string, error)
-	ReadValues(dbQuerier, *querySet, *modelInfo, *Condition, []string, interface{}, *time.Location) (int64, error)
-	RowsTo(dbQuerier, *querySet, *modelInfo, *Condition, interface{}, string, string, *time.Location) (int64, error)
+	ReadValues(dbQuerier, *querySet, *modelInfo, Condition, []string, interface{}, *time.Location) (int64, error)
+	RowsTo(dbQuerier, *querySet, *modelInfo, Condition, interface{}, string, string, *time.Location) (int64, error)
 	MaxLimit() uint64
 	TableQuote() string
 	ReplaceMarks(*string)

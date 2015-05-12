@@ -55,7 +55,7 @@ func ColValue(opt operator, value interface{}) interface{} {
 // real query struct
 type querySet struct {
 	mi       *modelInfo
-	cond     *Condition
+	cond     Condition
 	related  []string
 	relDepth int
 	limit    int64
@@ -67,20 +67,24 @@ type querySet struct {
 var _ QuerySeter = new(querySet)
 
 // add condition expression to QuerySeter.
-func (o querySet) Filter(expr string, args ...interface{}) QuerySeter {
+func (o *querySet) addCond(cond Condition) {
 	if o.cond == nil {
-		o.cond = NewCondition()
+		o.cond = And(cond)
+	} else {
+		junc := o.cond.(*junctionCond)
+		junc.conds = append(junc.conds, cond)
 	}
-	o.cond = o.cond.And(expr, args...)
+}
+
+// add condition expression to QuerySeter.
+func (o querySet) Filter(expr string, args ...interface{}) QuerySeter {
+	o.addCond(Cond(expr, args...))
 	return &o
 }
 
 // add NOT condition to querySeter.
 func (o querySet) Exclude(expr string, args ...interface{}) QuerySeter {
-	if o.cond == nil {
-		o.cond = NewCondition()
-	}
-	o.cond = o.cond.AndNot(expr, args...)
+	o.addCond(Not(Cond(expr, args...)))
 	return &o
 }
 
@@ -135,7 +139,7 @@ func (o querySet) RelatedSel(params ...interface{}) QuerySeter {
 }
 
 // set condition to QuerySeter.
-func (o querySet) SetCond(cond *Condition) QuerySeter {
+func (o querySet) SetCond(cond Condition) QuerySeter {
 	o.cond = cond
 	return &o
 }

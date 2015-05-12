@@ -326,68 +326,12 @@ loopFor:
 }
 
 // generate condition sql.
-func (t *dbTables) getCondSql(cond *Condition, sub bool, tz *time.Location) (where string, params []interface{}) {
-	if cond == nil || cond.IsEmpty() {
-		return
+func (t *dbTables) getCondSql(cond Condition, tz *time.Location) (string, []interface{}) {
+	if cond == nil {
+		return "", []interface{}{}
 	}
-
-	Q := t.base.TableQuote()
-
-	mi := t.mi
-
-	for i, p := range cond.params {
-		if i > 0 {
-			if p.isOr {
-				where += "OR "
-			} else {
-				where += "AND "
-			}
-		}
-		if p.isNot {
-			where += "NOT "
-		}
-		if p.isCond {
-			w, ps := t.getCondSql(p.cond, true, tz)
-			if w != "" {
-				w = fmt.Sprintf("( %s) ", w)
-			}
-			where += w
-			params = append(params, ps...)
-		} else {
-			exprs := p.exprs
-
-			num := len(exprs) - 1
-			operator := ""
-			if operators[exprs[num]] {
-				operator = exprs[num]
-				exprs = exprs[:num]
-			}
-
-			index, _, fi, suc := t.parseExprs(mi, exprs)
-			if suc == false {
-				panic(fmt.Errorf("unknown field/column name `%s`", strings.Join(p.exprs, ExprSep)))
-			}
-
-			if operator == "" {
-				operator = "exact"
-			}
-
-			operSql, args := t.base.GenerateOperatorSql(mi, fi, operator, p.args, tz)
-
-			leftCol := fmt.Sprintf("%s.%s%s%s", index, Q, fi.column, Q)
-			t.base.GenerateOperatorLeftCol(fi, operator, &leftCol)
-
-			where += fmt.Sprintf("%s %s ", leftCol, operSql)
-			params = append(params, args...)
-
-		}
-	}
-
-	if sub == false && where != "" {
-		where = "WHERE " + where
-	}
-
-	return
+	w, ps := cond.toSQL(t, tz)
+	return "WHERE " + w, ps
 }
 
 // generate order sql.

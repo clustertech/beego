@@ -542,7 +542,7 @@ func (d *dbBase) Delete(q dbQuerier, mi *modelInfo, ind reflect.Value, tz *time.
 
 // update table-related record by querySet.
 // need querySet not struct reflect.Value to update related records.
-func (d *dbBase) UpdateBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Condition, params Params, tz *time.Location) (int64, error) {
+func (d *dbBase) UpdateBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond Condition, params Params, tz *time.Location) (int64, error) {
 	columns := make([]string, 0, len(params))
 	values := make([]interface{}, 0, len(params))
 	for col, val := range params {
@@ -563,7 +563,7 @@ func (d *dbBase) UpdateBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Con
 		tables.parseRelated(qs.related, qs.relDepth)
 	}
 
-	where, args := tables.getCondSql(cond, false, tz)
+	where, args := tables.getCondSql(cond, tz)
 
 	values = append(values, args...)
 
@@ -623,13 +623,13 @@ func (d *dbBase) deleteRels(q dbQuerier, mi *modelInfo, args []interface{}, tz *
 		fi = fi.reverseFieldInfo
 		switch fi.onDelete {
 		case od_CASCADE:
-			cond := NewCondition().And(fmt.Sprintf("%s__in", fi.name), args...)
+			cond := Cond(fmt.Sprintf("%s__in", fi.name), args...)
 			_, err := d.DeleteBatch(q, nil, fi.mi, cond, tz)
 			if err != nil {
 				return err
 			}
 		case od_SET_DEFAULT, od_SET_NULL:
-			cond := NewCondition().And(fmt.Sprintf("%s__in", fi.name), args...)
+			cond := Cond(fmt.Sprintf("%s__in", fi.name), args...)
 			params := Params{fi.column: nil}
 			if fi.onDelete == od_SET_DEFAULT {
 				params[fi.column] = fi.initial.String()
@@ -645,7 +645,7 @@ func (d *dbBase) deleteRels(q dbQuerier, mi *modelInfo, args []interface{}, tz *
 }
 
 // delete table-related records.
-func (d *dbBase) DeleteBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Condition, tz *time.Location) (int64, error) {
+func (d *dbBase) DeleteBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond Condition, tz *time.Location) (int64, error) {
 	tables := newDbTables(mi, d.ins)
 	tables.skipEnd = true
 
@@ -653,13 +653,13 @@ func (d *dbBase) DeleteBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Con
 		tables.parseRelated(qs.related, qs.relDepth)
 	}
 
-	if cond == nil || cond.IsEmpty() {
+	if cond == nil {
 		panic(fmt.Errorf("delete operation cannot execute without condition"))
 	}
 
 	Q := d.ins.TableQuote()
 
-	where, args := tables.getCondSql(cond, false, tz)
+	where, args := tables.getCondSql(cond, tz)
 	join := tables.getJoinSql()
 
 	cols := fmt.Sprintf("T0.%s%s%s", Q, mi.fields.pk.column, Q)
@@ -721,7 +721,7 @@ func (d *dbBase) DeleteBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Con
 }
 
 // read related records.
-func (d *dbBase) ReadBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Condition, container interface{}, tz *time.Location, cols []string) (int64, error) {
+func (d *dbBase) ReadBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond Condition, container interface{}, tz *time.Location, cols []string) (int64, error) {
 
 	val := reflect.ValueOf(container)
 	ind := reflect.Indirect(val)
@@ -799,7 +799,7 @@ func (d *dbBase) ReadBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Condi
 	tables := newDbTables(mi, d.ins)
 	tables.parseRelated(qs.related, qs.relDepth)
 
-	where, args := tables.getCondSql(cond, false, tz)
+	where, args := tables.getCondSql(cond, tz)
 	orderBy := tables.getOrderSql(qs.orders)
 	limit := tables.getLimitSql(mi, offset, rlimit)
 	join := tables.getJoinSql()
@@ -931,11 +931,11 @@ func (d *dbBase) ReadBatch(q dbQuerier, qs *querySet, mi *modelInfo, cond *Condi
 }
 
 // excute count sql and return count result int64.
-func (d *dbBase) Count(q dbQuerier, qs *querySet, mi *modelInfo, cond *Condition, tz *time.Location) (cnt int64, err error) {
+func (d *dbBase) Count(q dbQuerier, qs *querySet, mi *modelInfo, cond Condition, tz *time.Location) (cnt int64, err error) {
 	tables := newDbTables(mi, d.ins)
 	tables.parseRelated(qs.related, qs.relDepth)
 
-	where, args := tables.getCondSql(cond, false, tz)
+	where, args := tables.getCondSql(cond, tz)
 	tables.getOrderSql(qs.orders)
 	join := tables.getJoinSql()
 
@@ -1378,7 +1378,7 @@ setValue:
 }
 
 // query sql, read values , save to *[]ParamList.
-func (d *dbBase) ReadValues(q dbQuerier, qs *querySet, mi *modelInfo, cond *Condition, exprs []string, container interface{}, tz *time.Location) (int64, error) {
+func (d *dbBase) ReadValues(q dbQuerier, qs *querySet, mi *modelInfo, cond Condition, exprs []string, container interface{}, tz *time.Location) (int64, error) {
 
 	var (
 		maps  []Params
@@ -1441,7 +1441,7 @@ func (d *dbBase) ReadValues(q dbQuerier, qs *querySet, mi *modelInfo, cond *Cond
 		}
 	}
 
-	where, args := tables.getCondSql(cond, false, tz)
+	where, args := tables.getCondSql(cond, tz)
 	orderBy := tables.getOrderSql(qs.orders)
 	limit := tables.getLimitSql(mi, qs.offset, qs.limit)
 	join := tables.getJoinSql()
@@ -1545,7 +1545,7 @@ func (d *dbBase) ReadValues(q dbQuerier, qs *querySet, mi *modelInfo, cond *Cond
 	return cnt, nil
 }
 
-func (d *dbBase) RowsTo(dbQuerier, *querySet, *modelInfo, *Condition, interface{}, string, string, *time.Location) (int64, error) {
+func (d *dbBase) RowsTo(dbQuerier, *querySet, *modelInfo, Condition, interface{}, string, string, *time.Location) (int64, error) {
 	return 0, nil
 }
 

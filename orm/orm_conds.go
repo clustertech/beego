@@ -17,99 +17,108 @@ package orm
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
 	ExprSep = "__"
 )
 
-type condValue struct {
-	exprs  []string
-	args   []interface{}
-	cond   *Condition
-	isOr   bool
-	isNot  bool
-	isCond bool
+type Condition interface {
+	toSQL(t *dbTables, tz *time.Location) (string, []interface{})
 }
 
-// condition struct.
-// work for WHERE conditions.
-type Condition struct {
-	params []condValue
+type simpleCond struct {
+	exprs []string
+	args  []interface{}
 }
 
-// return new condition struct
-func NewCondition() *Condition {
-	c := &Condition{}
-	return c
+type junctionCond struct {
+	conds []Condition
+	op    string
 }
 
-// add expression to condition
-func (c Condition) And(expr string, args ...interface{}) *Condition {
-	if expr == "" || len(args) == 0 {
+type notCond struct {
+	cond Condition
+}
+
+func (cond *junctionCond) toSQL(t *dbTables, tz *time.Location) (where string, params []interface{}) {
+	for i, c := range cond.conds {
+		w, ps := c.toSQL(t, tz)
+		w = fmt.Sprintf("( %s) ", w)
+		if i > 0 {
+			where += cond.op + " "
+		}
+		where += w
+		params = append(params, ps...)
+	}
+	return
+}
+
+func (cond *notCond) toSQL(t *dbTables, tz *time.Location) (where string, params []interface{}) {
+	w, ps := cond.cond.toSQL(t, tz)
+	where += fmt.Sprintf("NOT ( %s) ", w)
+	params = append(params, ps...)
+	return
+}
+
+func (cond *simpleCond) toSQL(t *dbTables, tz *time.Location) (where string, params []interface{}) {
+	exprs := cond.exprs
+
+	Q := t.base.TableQuote()
+	mi := t.mi
+
+	num := len(exprs) - 1
+	operator := ""
+	if operators[exprs[num]] {
+		operator = exprs[num]
+		exprs = exprs[:num]
+	}
+
+	index, _, fi, suc := t.parseExprs(mi, exprs)
+	if suc == false {
+		panic(fmt.Errorf("unknown field/column name `%s`", strings.Join(cond.exprs, ExprSep)))
+	}
+
+	if operator == "" {
+		operator = "exact"
+	}
+
+	operSql, args := t.base.GenerateOperatorSql(mi, fi, operator, cond.args, tz)
+
+	leftCol := fmt.Sprintf("%s.%s%s%s", index, Q, fi.column, Q)
+	t.base.GenerateOperatorLeftCol(fi, operator, &leftCol)
+
+	where += fmt.Sprintf("%s %s ", leftCol, operSql)
+	params = append(params, args...)
+
+	return
+}
+
+func And(conds ...Condition) Condition {
+	if len(conds) == 0 {
 		panic(fmt.Errorf("<Condition.And> args cannot empty"))
 	}
-	c.params = append(c.params, condValue{exprs: strings.Split(expr, ExprSep), args: args})
-	return &c
+	return &junctionCond{conds, "AND"}
 }
 
-// add NOT expression to condition
-func (c Condition) AndNot(expr string, args ...interface{}) *Condition {
-	if expr == "" || len(args) == 0 {
-		panic(fmt.Errorf("<Condition.AndNot> args cannot empty"))
-	}
-	c.params = append(c.params, condValue{exprs: strings.Split(expr, ExprSep), args: args, isNot: true})
-	return &c
-}
-
-// combine a condition to current condition
-func (c *Condition) AndCond(cond *Condition) *Condition {
-	c = c.clone()
-	if c == cond {
-		panic(fmt.Errorf("<Condition.AndCond> cannot use self as sub cond"))
-	}
-	if cond != nil {
-		c.params = append(c.params, condValue{cond: cond, isCond: true})
-	}
-	return c
-}
-
-// add OR expression to condition
-func (c Condition) Or(expr string, args ...interface{}) *Condition {
-	if expr == "" || len(args) == 0 {
+func Or(conds ...Condition) Condition {
+	if len(conds) == 0 {
 		panic(fmt.Errorf("<Condition.Or> args cannot empty"))
 	}
-	c.params = append(c.params, condValue{exprs: strings.Split(expr, ExprSep), args: args, isOr: true})
-	return &c
+	return &junctionCond{conds, "OR"}
 }
 
-// add OR NOT expression to condition
-func (c Condition) OrNot(expr string, args ...interface{}) *Condition {
+func Not(cond Condition) Condition {
+	if cond == nil {
+		panic(fmt.Errorf("<Condition.Not> arg cannot empty"))
+	}
+	return &notCond{cond}
+}
+
+func Cond(expr string, args ...interface{}) Condition {
 	if expr == "" || len(args) == 0 {
-		panic(fmt.Errorf("<Condition.OrNot> args cannot empty"))
+		panic(fmt.Errorf("<Condition> args cannot empty"))
 	}
-	c.params = append(c.params, condValue{exprs: strings.Split(expr, ExprSep), args: args, isNot: true, isOr: true})
-	return &c
-}
-
-// combine a OR condition to current condition
-func (c *Condition) OrCond(cond *Condition) *Condition {
-	c = c.clone()
-	if c == cond {
-		panic(fmt.Errorf("<Condition.OrCond> cannot use self as sub cond"))
-	}
-	if cond != nil {
-		c.params = append(c.params, condValue{cond: cond, isCond: true, isOr: true})
-	}
-	return c
-}
-
-// check the condition arguments are empty or not.
-func (c *Condition) IsEmpty() bool {
-	return len(c.params) == 0
-}
-
-// clone a condition
-func (c Condition) clone() *Condition {
-	return &c
+	return &simpleCond{exprs: strings.Split(expr, ExprSep), args: args}
 }
